@@ -1,4 +1,21 @@
-# IMLAB
+# My DB
+
+## How to run a small test
+```shell
+RUSTFLAGS=-Awarnings cargo run --bin sql --release
+CREATE TABLE test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL);
+CREATE TABLE test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);
+COPY test FROM 'data/test.tbl' DELIMITER '|';
+COPY test2 FROM 'data/test2.tbl';
+SELECT * FROM test;
+SELECT col1 FROM test;
+SELECT * FROM test WHERE test.col1 = 1;
+SELECT * FROM test t WHERE t.col1 = 1;
+SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2;
+SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2 AND t.col2 = 123;
+SELECT * FROM test , (SELECT h_c_id FROM history) WHERE h_c_id = test.col2;
+```
+
 
 ## How to run 
 ### 1.Imdb Benchmark:
