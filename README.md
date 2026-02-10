@@ -19,7 +19,8 @@ SELECT * FROM test WHERE test.col1 = 1;
 SELECT * FROM test t WHERE t.col1 = 1;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2 AND t.col2 = 123;
-SELECT * FROM test , (SELECT h_c_id FROM history) WHERE h_c_id = test.col2;
+startup_tpcc // special command to load the table from data/tpcc/
+SELECT * FROM test , (SELECT h_c_id FROM history) h WHERE h.h_c_id = test.col2;
 exit
 ```
 
