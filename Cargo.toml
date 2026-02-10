@@ -1,0 +1,35 @@
+[package]
+name = "imlab"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+cfgrammar = "0.13"
+lrlex = "0.13"
+
+[dependencies]
+rand = "0.9"
+hashbrown = "0.16.0"
+ahash = "0.8.12"
+cfgrammar = "0.13"
+lrlex = "0.13"
+lrpar = "0.13"
+rustyline = "17.0.2"
+thiserror = "2.0.17"
+anyhow = "1.0.100"
+enum_dispatch = "0.3"
+libloading = "0.9.0"
+phf = "0.13.1"
+phf_codegen = "0.13.1"
+csv = "1.2"
+rayon = "1.11.0"
+thread_local = "1.1.9"
+indexmap = "2.13.0"
+
+[[bin]]
+name = "tpcc"
+path = "bin/tpcc.rs"
+
+[[bin]]
+name = "sql"
+path = "bin/sql.rs"
