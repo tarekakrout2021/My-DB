@@ -7,6 +7,7 @@ This is an in-memory, row-store database written in Rust with an interactive SQL
 Supports only Linux and MacOS.
 
 ## How to run a small test
+You can find the tpcc files [here](https://db.in.tum.de/teaching/ws2122/imlab/tpcc_5w.tar.gz) 
 ```shell
 RUSTFLAGS=-Awarnings cargo run --bin sql --release
 CREATE TABLE test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL);
@@ -19,7 +20,7 @@ SELECT * FROM test WHERE test.col1 = 1;
 SELECT * FROM test t WHERE t.col1 = 1;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2 AND t.col2 = 123;
-startup_tpcc // special command to load the table from data/tpcc/
+startup_tpcc // special command to load the table from data/tpcc/ 
 SELECT * FROM test , (SELECT h_c_id FROM history) h WHERE h.h_c_id = test.col2;
 exit
 ```
