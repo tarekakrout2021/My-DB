@@ -46,25 +46,28 @@ IMLAB follows a classical database architecture composed of distinct layers, eac
 │          - SELECT (query execution)                     │
 └──────────────────┬──────────────────────────────────────┘
                    │
-┌──────────────────▼───────────────────┐
-│ Relational Algebra Layer (algebra/)  │
-│ - TableScan              │ - Join    │
-│ - Select                 │ - Print   │
-└──────────────────────────────────────┘
-       │
-┌──────▼──────────────────────────────────┐
-│   Code Generation (codegen/)            │
-│   - Produces Rust code                  │
-│   - Compiles to shared library          │
-│   - Dynamically loads executable        │
-└─────────────────────────────────────────┘
-       │
-┌──────▼──────────────────────────────────┐
-│   Storage Engine (db/)                  │
-│   - Row-store implementation            │
-│   - Type system (types/)                │
-│   - Index management                    │
-└─────────────────────────────────────────┘
+┌──────────────────▼──────────────────────────────────────┐
+│          Relational Algebra Layer (algebra/)            │
+│          - table scan                                   │
+│          - Select                                       │
+│          - Join                                         │   
+│          - Print                                        │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────┐
+│          Code Generation (codegen/)                     │
+│          - Produces Rust code                           │
+│          - Compiles to shared library                   │
+│          - Dynamically loads executable                 │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────┐
+│          Storage Engine (db/)                           │
+│          - Row-store implementation                     │ 
+│          - Type system (types/)                         │
+│          - Index management                             │
+└─────────────────────────────────────────────────────────┘
+
 ```
 
 ---
