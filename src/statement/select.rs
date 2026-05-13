@@ -79,7 +79,7 @@ impl Statement for SelectStatement {
             .ok_or("JIT function not loaded (prepare() did not succeed)")?;
 
         let start = Instant::now();
-        let _ = unsafe { main_fn(db)? };
+        let _ = unsafe { main_fn(db) };
         let duration = start.elapsed();
 
         println!(

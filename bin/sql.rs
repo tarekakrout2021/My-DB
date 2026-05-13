@@ -23,23 +23,6 @@ fn analyze(db: &Database, stmt: ASTStmt) -> std::result::Result<Box<dyn Statemen
     s.analyze(stmt.clone())
 }
 
-// fn debug_db(db: &Database) {
-//     println!("num of tables in db {}", db.tables.len());
-//
-//     for (table_name, _) in db.tables.iter() {
-//         println!(
-//             "table {} has {} columns",
-//             table_name,
-//             db.get_table(table_name).unwrap().columns.len()
-//         );
-//         println!(
-//             "table {} has {} records",
-//             table_name,
-//             db.get_table(table_name).unwrap().data.len()
-//         );
-//     }
-// }
-
 fn run_sql(db: &mut Database, sql: &str) {
     let parser = Parser::default();
     let ast = match parser.parse(sql) {
@@ -87,9 +70,9 @@ pub fn main() -> Result<()> {
         "CREATE TABLE test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL);",
         "CREATE TABLE test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);",
         "CREATE TABLE test3 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);",
-        "COPY test FROM 'data/test.tbl' DELIMITER '|';",
-        "COPY test3 FROM 'data/test.tbl' DELIMITER '|';",
-        "COPY test2 FROM 'data/test2.tbl';",
+        "COPY test FROM 'test_data/test.tbl' DELIMITER '|';",
+        "COPY test3 FROM 'test_data/test.tbl' DELIMITER '|';",
+        "COPY test2 FROM 'test_data/test2.tbl';",
     ];
 
     fn run_startup(db: &mut Database) {
@@ -122,8 +105,8 @@ pub fn main() -> Result<()> {
                     }
                     "startup_tpcc" => {
                         let start = Instant::now();
-                        run_sql_file(&mut db, "data/tpcc_schema.sql");
-                        run_sql_file(&mut db, "data/copy_tpcc.sql");
+                        run_sql_file(&mut db, "test_data/tpcc_schema.sql");
+                        run_sql_file(&mut db, "test_data/copy_tpcc.sql");
                         let duration = start.elapsed();
                         println!("Loaded TPCC in {:?}", duration);
                         rl.add_history_entry(line.as_str())?;
@@ -172,53 +155,3 @@ fn run_sql_file(db: &mut Database, path: &str) {
         Err(e) => println!("Could not read startup SQL file '{}': {}", path, e),
     }
 }
-
-// create table warehouse (
-// w_id integer not null,
-// w_name varchar(10) not null,
-// w_street_1 varchar(20) not null,
-// w_street_2 varchar(20) not null,
-// w_city varchar(20) not null,
-// w_state char(2) not null,
-// w_zip char(9) not null,
-// w_tax numeric(4, 4) not null,
-// w_ytd numeric(12, 2) not null,
-// primary key (w_id)
-// );
-// COPY warehouse FROM 'data/tpcc/warehouse.tbl' DELIMITER '|';
-// Create table test (col1 INTEGER NOT NULL, col2);
-// Create table test (col1 INTEGER NOT NULL, col2 INTEGER);
-// Create table test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL );
-//
-// Create table test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL );
-//
-// COPY test FROM 'bin/test.tbl' DELIMITER '|';
-//
-// select * from test;
-//
-// select col1 from test;
-//
-// select col1 from test, test2;
-//
-// select t2.col1 from test, test2 t2;
-//
-// select t2.col1 from test t2, test2 t2;
-//
-// select t2.col1 from test, test2 t2;
-//
-// select test.col1 from test t;
-//
-// select col123 from test;
-//
-// select test.col123 from test;
-//
-// select * from test, test2 t2 where t2.col1 = 5;
-
-// Create table test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL );
-// Create table test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL );
-// COPY test FROM 'bin/test.tbl' DELIMITER '|';
-// COPY test2 FROM 'bin/test2.tbl';
-// select * from test t, test2 t2;
-//select * from history where h_c_id = 1 AND h_c_d_id = 1 AND h_c_w_id = 1 AND h_d_id = 4;
-
-// select t.col1, t2.col1 from test t, test2 t2 where t.col2 = t2.col2;

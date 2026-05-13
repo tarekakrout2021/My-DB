@@ -7,26 +7,38 @@ This is an in-memory, row-store database written in Rust with an interactive SQL
 Supports only Linux and MacOS.
 
 ## How to run a small test
-You can find the tpcc files [here](https://db.in.tum.de/teaching/ws2122/imlab/tpcc_5w.tar.gz) 
+Run the database:
+
 ```shell
 RUSTFLAGS=-Awarnings cargo run --bin sql --release
+```
+
+Then in the REPL:
+```shell
 CREATE TABLE test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL);
 CREATE TABLE test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);
-COPY test FROM 'data/test.tbl' DELIMITER '|';
-COPY test2 FROM 'data/test2.tbl';
+COPY test FROM 'test_data/test.tbl' DELIMITER '|';
+COPY test2 FROM 'test_data/test2.tbl';
 SELECT * FROM test;
 SELECT col1 FROM test;
 SELECT * FROM test WHERE test.col1 = 1;
 SELECT * FROM test t WHERE t.col1 = 1;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2;
 SELECT * FROM test t, test2 t2 WHERE t.col2 = t2.col2 AND t.col2 = 123;
-startup_tpcc // special command to load the table from data/tpcc/ 
+exit
+```
+
+## Use the TPCC dataset
+You can find the tpcc files [here](https://db.in.tum.de/teaching/ws2122/imlab/tpcc_5w.tar.gz).
+
+```shell
+startup_tpcc // special command to load the table from data/tpcc/
 SELECT * FROM test , (SELECT h_c_id FROM history) h WHERE h.h_c_id = test.col2;
 exit
 ```
 
 
-## How to run 
+## Use IMDB Benchmark 
 ### 1.Imdb Benchmark:
 - Store the dataset files in the `data/imdb` folder. 
 - Start the repl with: 
@@ -69,8 +81,3 @@ column_name := text.text (e.g. s.matrnr) | text (e.g. matrnr)
 
 '(' SELECT ... ')' [ subquery_name ]
 ```
-
-### More technical stuff
-- Generates rust code.
-- Uses morsel-driven parallelism to execute queries efficiently ( parallelizes TableScan operators, LazyMultiMap and Print Operators without locks).
-- Can throw these [errors](src/semana/semana_errors.rs) 
