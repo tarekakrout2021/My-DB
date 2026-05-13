@@ -4,10 +4,8 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::{fmt, ptr};
-use std::time::Instant;
 use rayon::prelude::*;
 use thread_local::ThreadLocal;
-use colored::Colorize;
 
 /// Lazy-evaluated hashtable that supports multiple values per key.
 pub struct LazyMultiMap<K, V> {

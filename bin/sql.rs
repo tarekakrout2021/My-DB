@@ -85,10 +85,6 @@ pub fn main() -> Result<()> {
     }
 
     let mut rl = DefaultEditor::new()?;
-    #[cfg(feature = "with-file-history")]
-    if rl.load_history("history.txt").is_err() {
-        println!("No previous history.");
-    }
     loop {
         // debug_db(&db);
         let readline = rl.readline(">> ");
@@ -160,8 +156,6 @@ pub fn main() -> Result<()> {
             }
         }
     }
-    #[cfg(feature = "with-file-history")]
-    rl.save_history("history.txt");
     Ok(())
 }
 
@@ -185,7 +179,7 @@ fn benchmark_file(db: &mut Database,path: &str) {
     let mut query_num = 0;
     for stmt in stmts{
         let start = Instant::now();
-        for _ in (0..6){
+        for _ in 0..6{
             run_sql(db, &*(stmt.to_owned() + ";"));
         }
         let total_time = start.elapsed();

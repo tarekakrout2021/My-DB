@@ -535,7 +535,7 @@ mod tests {
 
         let ast = p.parse("select * from students;")?;
 
-        let query = match ast.statements.first() {
+        let _ = match ast.statements.first() {
             Some(Select(query)) => query,
             _ => panic!("Expected a SELECT statement"),
         };

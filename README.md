@@ -4,10 +4,13 @@
 
 This is an in-memory, row-store database written in Rust with an interactive SQL REPL that does JIT compilation for SELECT queries.
 
-Supports only Linux and MacOS.
+Tested only on Linux and MacOS.
 
 ## Example
-![repl_example.png](data/examples/repl_example.png)
+![img.png](data/examples/img.png)
+
+## Example of errors that can be thrown
+
 ![img_4.png](data/examples/img_4.png)
 ## How to run a small test
 Run the database:

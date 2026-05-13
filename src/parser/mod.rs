@@ -324,28 +324,28 @@ mod tests {
     #[test]
     fn parse_select_stmt() {
         let p = Parser::default();
-        let ast = p.parse("select * from students;").unwrap();
-        let ast = p.parse("select matrnr from students;").unwrap();
-        let ast = p.parse("select matrnr, name from students;").unwrap();
-        let ast = p.parse("select * from students s;").unwrap();
-        let ast = p.parse("select s.matrnr from students s;").unwrap();
-        let ast = p.parse("select s.matrnr, s.name from students s;").unwrap();
-        let ast = p
+        let _ = p.parse("select * from students;").unwrap();
+        let _ = p.parse("select matrnr from students;").unwrap();
+        let _ = p.parse("select matrnr, name from students;").unwrap();
+        let _ = p.parse("select * from students s;").unwrap();
+        let _ = p.parse("select s.matrnr from students s;").unwrap();
+        let _ = p.parse("select s.matrnr, s.name from students s;").unwrap();
+        let _ = p
             .parse("select * from students, attend, lectures;")
             .unwrap();
-        let ast = p
+        let _ = p
             .parse("select * from students s, attend a, lectures l;")
             .unwrap();
-        let ast = p
+        let _ = p
             .parse("select * from students where name = 'foo';")
             .unwrap();
-        let ast = p
+        let _ = p
             .parse("select * from students s where s.name = 'foo';")
             .unwrap();
-        let ast = p
+        let _ = p
             .parse("select * from students s where s.matrnr = 1234;")
             .unwrap();
-        let ast = p
+        let _ = p
             .parse("select * from students s where s.name = 'foo' and s.matrnr = 1234;")
             .unwrap();
     }
