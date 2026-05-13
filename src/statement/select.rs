@@ -5,6 +5,7 @@ use crate::algebra::{Op, Operator, OptimizerPass};
 use crate::codegen::{Codegen, JitMainFn};
 use crate::db::Database;
 use crate::statement::Statement;
+use colored::Colorize;
 use std::error::Error;
 use std::io::Write;
 use std::rc::Rc;
@@ -81,8 +82,17 @@ impl Statement for SelectStatement {
         let _ = unsafe { main_fn(db)? };
         let duration = start.elapsed();
 
-        println!("--\nCompilation time is : {:?}", self.comp_time);
-        println!("Execution time is : {:?}", duration);
+        println!(
+            "{} {}",
+            "Compilation time is :".dimmed(),
+            format!("{:?}", self.comp_time).dimmed()
+        );
+
+        println!(
+            "{} {}",
+            "Execution time is :".dimmed(),
+            format!("{:?}", duration).dimmed()
+        );
 
         Ok(())
     }
