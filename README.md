@@ -1,4 +1,4 @@
-# My-DB (IMLAB)
+# My-DB 
 
 An in-memory, row-store relational database engine written in Rust with an interactive SQL REPL and JIT-compiled SELECT queries.
 
