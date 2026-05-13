@@ -61,6 +61,9 @@ impl Expression {
 pub enum BinaryOperator {
     /// Equality comparison (=)
     Eq,
+    Geq,
+    Leq,
+    Neq
 }
 
 /// Binary expression combining two operands with an operator.

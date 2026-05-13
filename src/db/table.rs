@@ -206,13 +206,8 @@ impl Table {
         Ok(())
     }
 
-    pub fn get_col_index(&self, col_name: String) -> Option<i32> {
-        for (i, col) in self.columns.iter().enumerate() {
-            if col_name == col.id {
-                return Some(i as i32);
-            }
-        }
-        None
+    pub fn get_col_index(&self, col_name: &str) -> Option<usize> {
+        self.columns.iter().position(|col| col.id == col_name)
     }
 
     fn key_bytes_from_row_bytes(&self, row_bytes: &[u8]) -> Vec<u8> {
@@ -375,5 +370,12 @@ impl Table {
             }
         }
         println!()
+    }
+
+    pub fn field_bytes(&self, row_id: usize, col_idx: usize) -> Option<&[u8]> {
+        let row = self.row_ptr(row_id)?;
+        let off = self.col_offsets[col_idx];
+        let sz = self.columns[col_idx].size();
+        Some(&row[off..off + sz])
     }
 }

@@ -28,9 +28,10 @@ OptWhereClause -> Result<Option<Vec<BinaryExpression>>>:
   ;
 
 
-TargetList -> Result<Vec<ColId>>:
-      '*'                      { Ok(vec![]) }
-    | ColumnIdList             { Ok($1?) }
+TargetList -> Result<Option<Vec<ColId>>>:
+      '*'              { Ok(Some(vec![])) }
+    | 'COUNT(*)'       { Ok(None) }
+    | ColumnIdList     { Ok(Some($1?)) }
     ;
 
 ColumnIdList -> Result<Vec<ColId>>:
@@ -72,6 +73,27 @@ EqPred -> Result<BinaryExpression>:
           op: BinaryOperator::Eq,
         })
       }
+    | ColumnId '>=' ColOrConst {
+      Ok(BinaryExpression {
+	l: Expression::ColumnRef($1?),
+	r: $3?,
+	op: BinaryOperator::Geq,
+      })
+    }
+    | ColumnId '<=' ColOrConst {
+          Ok(BinaryExpression {
+    	l: Expression::ColumnRef($1?),
+    	r: $3?,
+    	op: BinaryOperator::Leq,
+          })
+    }
+    | ColumnId '!=' ColOrConst {
+      Ok(BinaryExpression {
+	l: Expression::ColumnRef($1?),
+	r: $3?,
+	op: BinaryOperator::Neq,
+      })
+    }
     ;
 ColOrConst -> Result<Expression>:
       ColumnId                  { Ok(Expression::ColumnRef($1?)) }

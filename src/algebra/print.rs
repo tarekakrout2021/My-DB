@@ -59,7 +59,6 @@ impl Operator for Print {
         codegen.line("use imlab::types::timestamp::Timestamp;");
         codegen.line("use imlab::types::bool::Bool;");
         codegen.line("use imlab::db::Key;");
-        codegen.line("use imlab::infra::map::LazyMultiMapBuilder;");
         codegen.line("use imlab::infra::map::LazyMultiMapParBuilder;");
         codegen.line("use imlab::db::row::RowView;");
         codegen.line("use imlab::db::row::ValueRef;");
@@ -67,7 +66,7 @@ impl Operator for Print {
         codegen.line("use imlab::algebra::print::ParOutput;");
 
         codegen.start_function("main_query");
-        codegen.line("let MORSEL_SIZE = 256;");
+        codegen.line("let MORSEL_SIZE = 1024;");
         codegen.line("let out = ParOutput::new();");
 
         let child_rc = self.child.borrow().clone();
@@ -88,20 +87,22 @@ impl Operator for Print {
         tuple_ctx: TupleCtx,
     ) -> Result<(), Box<dyn Error>> {
         // codegen.line("println!(\"{:?}\", row);");
-        codegen.line("// Print operator consume");
-        let mut curly_braces_line = "".to_string();
-        for _ in &self.iu_refs_set {
-            curly_braces_line.push_str("{} | ");
+        if self.iu_refs_vec.len() > 0 {
+            codegen.line("// Print operator consume");
+            let mut curly_braces_line = "".to_string();
+            for _ in &self.iu_refs_set {
+                curly_braces_line.push_str("{} | ");
+            }
+            codegen.line(format!("let line = format!(\" {} \", ", curly_braces_line));
+            for iu in &self.iu_refs_vec {
+                let expr = tuple_ctx.exprs.get(iu).unwrap();
+                codegen.line(format!("{},  ", expr));
+            }
+            codegen.line(");");
+            codegen.line("out.push_line(&line);");
+        } else {
+            codegen.line("out.inc_count();");
         }
-        codegen.line(format!("let line = format!(\" {} \", ", curly_braces_line));
-        for iu in &self.iu_refs_vec {
-            let expr = tuple_ctx.exprs.get(iu).unwrap();
-            codegen.line(format!("{},  ", expr));
-        }
-        codegen.line(");");
-        codegen.line("out.push_line(&line);");
-        // codegen.line("out_count += 1;");
-
         Ok(())
     }
 
@@ -156,6 +157,12 @@ impl ParOutput {
         let mut st = cell.borrow_mut();
         st.buf.push_str(s);
         st.buf.push('\n');
+        st.count += 1;
+    }
+
+    pub fn inc_count(&self) {
+        let cell = self.locals.get_or(|| RefCell::new(LocalState::default()));
+        let mut st = cell.borrow_mut();
         st.count += 1;
     }
 

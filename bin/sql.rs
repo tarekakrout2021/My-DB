@@ -3,6 +3,7 @@
 //! Implement a SQL Read-Eval-Print Loop (REPL) that provides an
 //! interactive interface for executing SQL DDL and DQL statements.
 
+use colored::Colorize;
 use imlab::db::Database;
 use imlab::parser::Parser;
 use imlab::parser::ast::Statement as ASTStmt;
@@ -11,7 +12,9 @@ use imlab::semana::semana_errors::SemanticError;
 use imlab::statement::Statement;
 use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use indexmap::IndexMap;
+
 /// Main entry point for the SQL REPL.
 ///
 /// Creates a database instance and enters an interactive loop where users
@@ -28,7 +31,7 @@ fn run_sql(db: &mut Database, sql: &str) {
     let ast = match parser.parse(sql) {
         Ok(ast) => ast,
         Err(e) => {
-            println!("Startup SQL parse error: {e:#?}");
+            println!("{}", format!("Error when parsing: {e:#?}").red());
             return;
         }
     };
@@ -45,19 +48,19 @@ fn run_sql(db: &mut Database, sql: &str) {
                 st
             }
             Err(e) => {
-                println!("Error in semantic analysis: {e}");
+                println!("{}", format!("Error in semantic analysis: {e}").red());
                 continue;
             }
         };
 
         if let Err(e) = st.prepare(db) {
-            println!("Error in prepare statement: {e}");
+            println!("{}", format!("Error in prepare statement: {e}").red());
             continue;
         }
 
         let mut stdout = std::io::stdout();
         if let Err(e) = st.execute(db, &mut stdout) {
-            println!("Error in execute statement: {e}");
+            println!("{}", format!("Error in execute statement: {e}").red());
             continue;
         }
     }
@@ -70,9 +73,9 @@ pub fn main() -> Result<()> {
         "CREATE TABLE test (col1 INTEGER NOT NULL, col2 INTEGER NOT NULL);",
         "CREATE TABLE test2 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);",
         "CREATE TABLE test3 (col1 VARCHAR(20) NOT NULL, col2 INTEGER NOT NULL);",
-        "COPY test FROM 'test_data/test.tbl' DELIMITER '|';",
-        "COPY test3 FROM 'test_data/test.tbl' DELIMITER '|';",
-        "COPY test2 FROM 'test_data/test2.tbl';",
+        "COPY test FROM 'data/test.tbl' DELIMITER '|';",
+        "COPY test3 FROM 'data/test.tbl' DELIMITER '|';",
+        "COPY test2 FROM 'data/test2.tbl';",
     ];
 
     fn run_startup(db: &mut Database) {
@@ -105,8 +108,8 @@ pub fn main() -> Result<()> {
                     }
                     "startup_tpcc" => {
                         let start = Instant::now();
-                        run_sql_file(&mut db, "test_data/tpcc_schema.sql");
-                        run_sql_file(&mut db, "test_data/copy_tpcc.sql");
+                        run_sql_file(&mut db, "data/tpcc_schema.sql");
+                        run_sql_file(&mut db, "data/copy_tpcc.sql");
                         let duration = start.elapsed();
                         println!("Loaded TPCC in {:?}", duration);
                         rl.add_history_entry(line.as_str())?;
@@ -116,9 +119,22 @@ pub fn main() -> Result<()> {
                         run_sql_file(&mut db, "data/my_imdb_schema.sql");
                         rl.add_history_entry(line.as_str())?;
                     }
+                    "benchmark_imdb" => {
+                        run_sql_file(&mut db, "data/my_imdb_schema.sql");
+                        rl.add_history_entry(line.as_str())?;
+                        benchmark_file(&mut db, "data/imdb_queries_phf.sql");
+                        rl.add_history_entry(line.as_str())?;
+                    }
+
                     "help" => {
                         println!(
-                            "Commands:\nstartup - run predefined startup SQL\nhelp - show this message\nexit - exit REPL"
+                            "Commands:\n\
+                            startup_test - run predefined startup SQL\n\
+                            startup_tpcc - run predefined startup tpcc SQL\n\
+                            startup_imdb - run predefined startup imdb SQL\n\
+                            benchmark_imdb - run predefined startup imdb SQL\n\
+                            help - show this message\n\
+                            exit - exit REPL"
                         );
                         rl.add_history_entry(line.as_str())?;
                     }
@@ -153,5 +169,31 @@ fn run_sql_file(db: &mut Database, path: &str) {
     match std::fs::read_to_string(path) {
         Ok(contents) => run_sql(db, &contents),
         Err(e) => println!("Could not read startup SQL file '{}': {}", path, e),
+    }
+}
+
+fn benchmark_file(db: &mut Database,path: &str) {
+    let sql = std::fs::read_to_string(path).unwrap();
+
+    let stmts: Vec<_> = sql.split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut map: IndexMap<i32, Duration> = IndexMap::new();
+
+    let mut query_num = 0;
+    for stmt in stmts{
+        let start = Instant::now();
+        for _ in (0..6){
+            run_sql(db, &*(stmt.to_owned() + ";"));
+        }
+        let total_time = start.elapsed();
+        map.insert(query_num, total_time/6);
+        query_num += 1;
+    }
+
+    for (query_num, time) in map{
+        println!("query_{} avg time: {:?}", query_num, time);
     }
 }

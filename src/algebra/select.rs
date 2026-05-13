@@ -10,6 +10,8 @@ use crate::algebra::join::JoinType;
 use crate::algebra::{Op, Operator, OptimizerPass, TupleCtx};
 use crate::codegen::Codegen;
 use crate::parser::expr::{BinaryExpression, Expression};
+use crate::parser::expr::BinaryOperator::{Eq, Leq, Geq, Neq};
+use crate::types::Tag;
 
 /// Selection operator that filters tuples based on a predicate.
 #[derive(Debug)]
@@ -51,11 +53,97 @@ impl Select {
         set
     }
 
-    fn predicate_to_code(&self, ctx: &TupleCtx) -> String {
-        let left = self.binary_exp.l.produce(ctx);
+    fn predicate_to_code(
+        &self,
+        ctx: &TupleCtx,
+    ) -> Result<(Option<String>, String), Box<dyn Error>> {
+
+        let op_str = match self.binary_exp.op {
+            Eq  => "==",
+            Leq => "<=",
+            Geq => ">=",
+            Neq => "!=",
+        };
+
+        let (col_iu, lit_str, col_is_left) = match (&self.binary_exp.l, &self.binary_exp.r) {
+            (Expression::IURef(iu), Expression::String(s)) => (Some(iu), Some(s.as_str()), true),
+            (Expression::String(s), Expression::IURef(iu)) => (Some(iu), Some(s.as_str()), false),
+            _ => (None, None, true),
+        };
+
+        if let (Some(iu), Some(lit)) = (col_iu, lit_str) {
+            let col_expr = ctx.exprs.get(iu)
+                .ok_or_else(|| format!("IURef '{}' not found in TupleCtx", iu.name))?
+                .clone();
+
+            return match iu.r#type.r#type() {
+                Tag::Char | Tag::VarChar | Tag::Text => {
+                    let setup = format!(
+                        "let __text_cmp = match {} {{ ValueRef::Text(tv) => tv, _ => unreachable!() }};",
+                        col_expr
+                    );
+                    let cond = if col_is_left {
+                        format!("__text_cmp.as_str() {} {:?}", op_str, lit)
+                    } else {
+                        format!("{:?} {} __text_cmp.as_str()", lit, op_str)
+                    };
+                    Ok((Some(setup), cond))
+                }
+                Tag::Integer => {
+                    let n: i32 = lit.trim().parse().map_err(|_| {
+                        format!("Type mismatch: column '{}' is INTEGER but got string literal {:?}", iu.name, lit)
+                    })?;
+                    let value_ref = format!("ValueRef::Integer({})", n);
+                    let cond = if col_is_left {
+                        format!("{} {} {}", col_expr, op_str, value_ref)
+                    } else {
+                        format!("{} {} {}", value_ref, op_str, col_expr)
+                    };
+                    Ok((None, cond))
+                }
+                Tag::Numeric => {
+                    Err(format!(
+                        "Type mismatch: column '{}' is NUMERIC, string literal {:?} not supported in predicate yet",
+                        iu.name, lit
+                    ).into())
+                }
+                Tag::Timestamp => {
+                    let n: i64 = lit.trim().parse().map_err(|_| {
+                        format!("Type mismatch: column '{}' is TIMESTAMP but got string literal {:?}", iu.name, lit)
+                    })?;
+                    let value_ref = format!("ValueRef::Timestamp({})", n);
+                    let cond = if col_is_left {
+                        format!("{} {} {}", col_expr, op_str, value_ref)
+                    } else {
+                        format!("{} {} {}", value_ref, op_str, col_expr)
+                    };
+                    Ok((None, cond))
+                }
+                Tag::Bool => {
+                    let b: bool = lit.trim().parse().map_err(|_| {
+                        format!("Type mismatch: column '{}' is BOOL but got string literal {:?}", iu.name, lit)
+                    })?;
+                    let value_ref = format!("ValueRef::Bool({})", b);
+                    let cond = if col_is_left {
+                        format!("{} {} {}", col_expr, op_str, value_ref)
+                    } else {
+                        format!("{} {} {}", value_ref, op_str, col_expr)
+                    };
+                    Ok((None, cond))
+                }
+            };
+        }
+
+        // Both sides are IURefs (column = column)
+        let left  = self.binary_exp.l.produce(ctx);
         let right = self.binary_exp.r.produce(ctx);
-        //  WHERE only supports '=' so we hardcode '=='
-        format!("{} == {}", left, right)
+        let cond = match self.binary_exp.op {
+            Eq  => format!("{} == {}", left, right),
+            Leq => format!("{} <= {}", left, right),
+            Geq => format!("{} >= {}", left, right),
+            Neq => format!("{} != {}", left, right),
+        };
+        Ok((None, cond))
     }
 
     /// Try to push this select below joins.
@@ -159,17 +247,19 @@ impl Operator for Select {
         _caller: &dyn Operator,
         tuple_ctx: TupleCtx,
     ) -> Result<(), Box<dyn Error>> {
-        let cond = self.predicate_to_code(&tuple_ctx);
+        let (setup, cond) = self.predicate_to_code(&tuple_ctx)?;
 
         codegen.line("// Select operator consume");
+        if let Some(setup_line) = setup {
+            codegen.line(setup_line);
+        }
         codegen.open(format!("if {}", cond));
 
         if let Some(parent) = self.parent.borrow().upgrade() {
             parent.consume(codegen, self, tuple_ctx)?;
         }
 
-        codegen.close(); // end if
-
+        codegen.close();
         Ok(())
     }
 

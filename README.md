@@ -6,6 +6,9 @@ This is an in-memory, row-store database written in Rust with an interactive SQL
 
 Supports only Linux and MacOS.
 
+## Example
+![repl_example.png](data/examples/repl_example.png)
+![img_4.png](data/examples/img_4.png)
 ## How to run a small test
 Run the database:
 

@@ -69,7 +69,7 @@ pub struct CopyTable {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Query {
     /// Target columns or expressions (SELECT clause)
-    pub targets: Vec<ColId>,
+    pub targets: Option<Vec<ColId>>,
     /// Tables to select from (FROM clause)
     pub from: Vec<TableFactor>,
     /// WHERE clause conditions

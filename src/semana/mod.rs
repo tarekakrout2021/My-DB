@@ -123,23 +123,28 @@ impl SemanticAnalysis<'_> {
         let op = self.analyze_select(stmt, &mut scope)?;
 
         let mut print_op = Print::new(op);
-        if stmt.targets.is_empty() {
-            for (_, map) in &scope.ius {
-                for m in map {
-                    print_op.iu_refs_set.insert(m.iu.clone());
-                    print_op.iu_refs_vec.push(m.iu.clone());
+        if let Some(targets) = &stmt.targets {
+            if targets.is_empty() {
+                for (_, map) in &scope.ius {
+                    for m in map {
+                        print_op.iu_refs_set.insert(m.iu.clone());
+                        print_op.iu_refs_vec.push(m.iu.clone());
+                    }
+                }
+            } else {
+                for col in targets {
+                    let iu_ref = scope.iu(col)?;
+                    print_op.iu_refs_set.insert(iu_ref.clone());
+                    print_op.iu_refs_vec.push(iu_ref.clone());
                 }
             }
-        } else {
-            for col in &stmt.targets {
-                let iu_ref = scope.iu(col)?;
-                print_op.iu_refs_set.insert(iu_ref.clone());
-                print_op.iu_refs_vec.push(iu_ref.clone());
-            }
-        }
-        let top = Rc::new(Op::Print(print_op));
+            let top = Rc::new(Op::Print(print_op));
 
-        Ok(SelectStatement::new(top))
+            Ok(SelectStatement::new(top))
+        } else {
+            let top = Rc::new(Op::Print(print_op));
+            Ok(SelectStatement::new(top))
+        }
     }
 
     /// Builds relational algebra tree from SELECT statement components.
@@ -207,7 +212,7 @@ impl SemanticAnalysis<'_> {
     /// Analyzes SELECT target list and updates scope.
     fn analyze_target(
         &self,
-        target: &ASTTarget,
+        target: &Option<ASTTarget>,
         scope: &mut Scope,
         op: Rc<Op>,
     ) -> Result<Rc<Op>, SemanticError> {
@@ -216,18 +221,21 @@ impl SemanticAnalysis<'_> {
         //       then? because this is the place where map operators would be put on top of the tree, e.g., if the
         //       target was an expression like a + 2)
 
-        if target.len() == 0 {
-            return Ok(op);
-        }
+        if let Some(v) = target {
+            if v.len() == 0 {
+                return Ok(op);
+            }
 
-        // collect all IURefs referenced by the target
-        let mut selected_set: HashSet<IURef> = HashSet::new();
-        for col in target {
-            let iu_ref = scope.iu(col)?;
-            selected_set.insert(iu_ref.clone());
+            // collect all IURefs referenced by the target
+            let mut selected_set: HashSet<IURef> = HashSet::new();
+            for col in v {
+                let iu_ref = scope.iu(col)?;
+                selected_set.insert(iu_ref.clone());
+            }
+            Ok(op)
+        } else {
+            Ok(op)
         }
-
-        Ok(op)
     }
 
     /// Performs type checking and column resolution on expressions.
@@ -264,13 +272,12 @@ impl SemanticAnalysis<'_> {
                 let mut sub_scope = Scope::default();
                 let _sub_op = self.analyze_select(q, &mut sub_scope)?;
 
-                // For scalar subquery usage (e.g., in equality), require exactly one target column.
-                if q.targets.len() != 1 {
-                    return Err(SemanticError::TypeMismatch(
-                        "subquery returns multiple columns".to_string(),
-                        "scalar".to_string(),
-                    ));
-                }
+                // if q.targets.len() != 1 {
+                //     return Err(SemanticError::TypeMismatch(
+                //         "subquery returns multiple columns".to_string(),
+                //         "scalar".to_string(),
+                //     ));
+                // }
 
                 Ok(expr.clone())
             }
@@ -328,7 +335,7 @@ impl SemanticAnalysis<'_> {
                 } else {
                     &alias
                 };
-                scope.add_ius(key, iu_map_vec)?; // what if there is no alias ?
+                scope.add_ius(key, iu_map_vec)?;
 
                 Ok(Rc::new(Op::TableScan(table_scan_op)))
             }
@@ -338,28 +345,29 @@ impl SemanticAnalysis<'_> {
 
                 // Collect output IUs from sub_scope
                 let mut iu_map_vec: Vec<IUMap> = Vec::new();
-                if query.targets.is_empty() {
-                    // SELECT * case: expose all IUs from sub_scope
-                    for (_tbl_alias, cols) in &sub_scope.ius {
-                        for m in cols {
+                if let Some(targets) = &query.targets {
+                    if targets.is_empty() {
+                        // SELECT * case: expose all IUs from sub_scope
+                        for (_tbl_alias, cols) in &sub_scope.ius {
+                            for m in cols {
+                                iu_map_vec.push(IUMap {
+                                    alias: m.alias.clone(),
+                                    iu: m.iu.clone(),
+                                });
+                            }
+                        }
+                    } else {
+                        for col in targets {
+                            let iu = sub_scope.iu(col)?;
                             iu_map_vec.push(IUMap {
-                                alias: m.alias.clone(),
-                                iu: m.iu.clone(),
+                                alias: col.column.clone(),
+                                iu,
                             });
                         }
                     }
-                } else {
-                    for col in &query.targets {
-                        let iu = sub_scope.iu(col)?;
-                        iu_map_vec.push(IUMap {
-                            alias: col.column.clone(),
-                            iu,
-                        });
-                    }
+                    // Add the derived table's IUs to outer scope
+                    scope.add_ius(alias, iu_map_vec)?;
                 }
-
-                // Add the derived table's IUs to outer scope
-                scope.add_ius(alias, iu_map_vec)?;
 
                 Ok(sub_op)
             }

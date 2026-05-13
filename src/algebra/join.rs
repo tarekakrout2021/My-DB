@@ -1,7 +1,7 @@
 //! Join operator for combining data from two input streams.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::rc::{Rc, Weak};
 
@@ -16,7 +16,6 @@ pub enum JoinType {
     Inner,
 }
 
-/// Join operator that combines tuples from two child operators.
 #[derive(Debug)]
 pub struct Join {
     /// Reference to parent operator
@@ -29,11 +28,12 @@ pub struct Join {
     pub join_type: RefCell<JoinType>,
     pub join_predicates: RefCell<Vec<BinaryExpression>>,
 
-    /// from which side is the consume call coming
+    /// Used for CROSS join to remember the left tuple.
     pub current_left_ctx: RefCell<Option<TupleCtx>>,
 
-    /// IUs from the left child that we want to store as payload in the hash table for the hash join.
-    pub left_payload_ius: RefCell<Vec<IURef>>,
+    /// Captured from build side so probe phase can reconstruct IUs.
+    left_access_template: RefCell<Option<HashMap<IURef, (String, String)>>>,
+    left_row_id_tables_template: RefCell<Option<Vec<String>>>,
 
     /// Name of the LazyMultiMapBuilder variable in generated code (e.g., "builder_0").
     builder_var: RefCell<Option<String>>,
@@ -53,7 +53,8 @@ impl Join {
             join_type: RefCell::new(JoinType::Cross),
             join_predicates: RefCell::new(Vec::new()),
             current_left_ctx: RefCell::new(None),
-            left_payload_ius: RefCell::new(Vec::new()),
+            left_access_template: RefCell::new(None),
+            left_row_id_tables_template: RefCell::new(None),
             builder_var: RefCell::new(None),
             map_var: RefCell::new(None),
             in_build_phase: Cell::new(false),
@@ -64,17 +65,10 @@ impl Join {
         *self.join_type.borrow()
     }
 
-    /// Updates the join type (used by optimizer passes).
     pub fn set_join_type(&self, join_type: JoinType) {
         *self.join_type.borrow_mut() = join_type;
     }
 
-    /// Returns a clone of the current join predicates, if any.
-    pub fn join_predicates(&self) -> Vec<BinaryExpression> {
-        self.join_predicates.borrow().clone()
-    }
-
-    /// Updates the join predicate (e.g., when turning a cross product + filter into an inner join).
     pub fn add_join_predicate(&self, predicate: BinaryExpression) {
         self.join_predicates.borrow_mut().push(predicate);
         *self.join_type.borrow_mut() = JoinType::Inner;
@@ -85,61 +79,81 @@ impl Join {
         let right_ius = self.right_child.borrow().ius();
 
         let mut res = Vec::new();
-
         for pred in self.join_predicates.borrow().iter() {
             let expr = match (&pred.l, &pred.r, build_side) {
                 (Expression::IURef(iu_l), Expression::IURef(iu_r), true) => {
-                    // build side: choose IU from left child
                     if left_ius.contains(iu_l) {
-                        ctx.exprs
-                            .get(iu_l)
-                            .unwrap_or_else(|| panic!("Build IU not found in TupleCtx (left)"))
-                            .clone()
+                        ctx.exprs.get(iu_l).unwrap().clone()
                     } else if left_ius.contains(iu_r) {
-                        ctx.exprs
-                            .get(iu_r)
-                            .unwrap_or_else(|| panic!("Build IU not found in TupleCtx (right)"))
-                            .clone()
+                        ctx.exprs.get(iu_r).unwrap().clone()
                     } else {
                         panic!("No build-side IU found for predicate in Join");
                     }
                 }
                 (Expression::IURef(iu_l), Expression::IURef(iu_r), false) => {
-                    // probe side: choose IU from right child
                     if right_ius.contains(iu_l) {
-                        ctx.exprs
-                            .get(iu_l)
-                            .unwrap_or_else(|| panic!("Probe IU not found in TupleCtx (left)"))
-                            .clone()
+                        ctx.exprs.get(iu_l).unwrap().clone()
                     } else if right_ius.contains(iu_r) {
-                        ctx.exprs
-                            .get(iu_r)
-                            .unwrap_or_else(|| panic!("Probe IU not found in TupleCtx (right)"))
-                            .clone()
+                        ctx.exprs.get(iu_r).unwrap().clone()
                     } else {
                         panic!("No probe-side IU found for predicate in Join");
                     }
                 }
                 _ => unreachable!(),
             };
-
             res.push(expr);
         }
-
         res
     }
 
-    fn payload_exprs_from_ctx(&self, ctx: &TupleCtx) -> Vec<String> {
-        self.left_payload_ius
-            .borrow()
-            .iter()
-            .map(|iu| {
-                ctx.exprs
-                    .get(iu)
-                    .unwrap_or_else(|| panic!("Payload IU not found in TupleCtx"))
-                    .clone()
-            })
-            .collect()
+    /// Emit: out = left.clone(); out.extend(right.iter().copied());
+    /// with *explicit* SmallVec backing array type to avoid SmallVec<_> inference failures.
+    fn emit_row_ids_concat(
+        &self,
+        codegen: &mut Codegen,
+        out_var: &str,
+        left_expr: &str,
+        right_expr: &str,
+    ) {
+        codegen.line(&format!(
+            "let {out}: Vec<usize> = {{ \
+                let mut tmp: Vec<usize> = {left}.clone(); \
+                tmp.extend({right}.iter().copied()); \
+                tmp \
+            }};",
+            out = out_var,
+            left = left_expr,
+            right = right_expr
+        ));
+    }
+
+    /// Build a TupleCtx where all IU exprs are reconstructed via RowView from joined row ids.
+    fn rebuild_ctx_from_row_ids(
+        &self,
+        joined_ids_var: &str,
+        merged_tables: &Vec<String>,
+        merged_access: &HashMap<IURef, (String, String)>,
+    ) -> TupleCtx {
+        let mut merged_exprs: HashMap<IURef, String> = HashMap::new();
+
+        for (iu, (tbl_var, col_var)) in merged_access.iter() {
+            let idx = merged_tables
+                .iter()
+                .position(|t| t == tbl_var)
+                .unwrap_or_else(|| panic!("Table var {} not found in merged_tables", tbl_var));
+
+            let rid_expr = format!("*{}.get({}).unwrap()", joined_ids_var, idx);
+            let view_expr = format!("RowView{{ table: &{}, row_id: {} }}", tbl_var, rid_expr);
+            let expr = format!("{}.get({}).unwrap()", view_expr, col_var);
+            merged_exprs.insert(iu.clone(), expr);
+        }
+
+        TupleCtx {
+            exprs: merged_exprs,
+            access: merged_access.clone(),
+            row_ids_expr: joined_ids_var.to_string(),
+            row_id_tables: merged_tables.clone(),
+        }
     }
 }
 
@@ -151,7 +165,7 @@ impl Operator for Join {
         left_rc.set_parent(Rc::downgrade(op));
         right_rc.set_parent(Rc::downgrade(op));
 
-        // Figure out which IUs each child can produce
+        // Split required IUs per child
         let left_ius = left_rc.ius();
         let right_ius = right_rc.ius();
 
@@ -161,19 +175,14 @@ impl Operator for Join {
         for iu in required_ius {
             if left_ius.contains(&iu) {
                 left_required.insert(iu.clone());
-                // left_payload.push(iu.clone());
             }
             if right_ius.contains(&iu) {
                 right_required.insert(iu.clone());
             }
         }
 
-        *self.left_payload_ius.borrow_mut() = left_ius.into_iter().collect();
-
-        // Prepare children with their respective required IUs
         left_rc.prepare(&left_rc, left_required)?;
         right_rc.prepare(&right_rc, right_required)?;
-
         Ok(())
     }
 
@@ -191,36 +200,36 @@ impl Operator for Join {
                 Ok(())
             }
             JoinType::Inner => {
-                // Hash join using LazyMultiMap<Key, Vec<Value>>.
-
                 let builder_name = codegen.new_var("builder_");
                 let map_name = codegen.new_var("map_");
 
                 *self.builder_var.borrow_mut() = Some(builder_name.clone());
                 *self.map_var.borrow_mut() = Some(map_name.clone());
 
-                // Declare the builder
                 codegen.line("// Using LazyMultiMap ");
                 codegen.line(&format!(
-                    "let mut {}: LazyMultiMapParBuilder<Vec<ValueRef>, Vec<ValueRef>> = LazyMultiMapParBuilder::new();",
-                    builder_name
+                    "let mut {b}: LazyMultiMapParBuilder<Vec<ValueRef>, Vec<usize>> = LazyMultiMapParBuilder::new();",
+                    b = builder_name
                 ));
 
-                // Build phase: consume all left tuples into the builder
+                // Build phase
                 self.in_build_phase.set(true);
                 let left_rc = self.left_child.borrow().clone();
                 codegen.line("// Build Phase ");
                 left_rc.produce(codegen)?;
                 self.in_build_phase.set(false);
 
-                // Finalize to get the hash table
-                codegen.line(&format!("let {} = {}.finalize();", map_name, builder_name));
+                // Finalize hash table
+                codegen.line(&format!(
+                    "let {m} = {b}.finalize();",
+                    m = map_name,
+                    b = builder_name
+                ));
 
-                // Probe phase: scan the right side and probe the hash table
+                // Probe phase
                 let right_rc = self.right_child.borrow().clone();
                 codegen.line("// Probe Phase ");
                 right_rc.produce(codegen)?;
-
                 Ok(())
             }
         }
@@ -237,33 +246,36 @@ impl Operator for Join {
                 let is_left_call = self.current_left_ctx.borrow().is_none();
 
                 if is_left_call {
-                    {
-                        let mut slot = self.current_left_ctx.borrow_mut();
-                        *slot = Some(tuple_ctx); // store this left tuple ctx
-                    }
-
+                    *self.current_left_ctx.borrow_mut() = Some(tuple_ctx);
                     let right_rc = self.right_child.borrow().clone();
                     right_rc.produce(codegen)?;
-
-                    // clear the stored left context.
-                    let mut slot = self.current_left_ctx.borrow_mut();
-                    *slot = None;
-
+                    *self.current_left_ctx.borrow_mut() = None;
                     Ok(())
                 } else {
-                    let left_ctx = {
-                        let slot = self.current_left_ctx.borrow();
-                        slot.as_ref().unwrap().clone()
-                    };
+                    let left_ctx = self.current_left_ctx.borrow().as_ref().unwrap().clone();
 
-                    let mut merged = TupleCtx {
-                        exprs: left_ctx.exprs.clone(),
-                    };
-                    for (iu, expr) in tuple_ctx.exprs.into_iter() {
-                        merged.exprs.insert(iu, expr);
+                    let joined_ids_var = codegen.new_var("row_ids_");
+                    self.emit_row_ids_concat(
+                        codegen,
+                        &joined_ids_var,
+                        &left_ctx.row_ids_expr,
+                        &tuple_ctx.row_ids_expr,
+                    );
+
+                    let mut merged_tables = left_ctx.row_id_tables.clone();
+                    merged_tables.extend(tuple_ctx.row_id_tables.iter().cloned());
+
+                    let mut merged_access = left_ctx.access.clone();
+                    for (iu, acc) in tuple_ctx.access.iter() {
+                        merged_access.insert(iu.clone(), acc.clone());
                     }
 
-                    // Forward the merged tuple to parent
+                    let merged = self.rebuild_ctx_from_row_ids(
+                        &joined_ids_var,
+                        &merged_tables,
+                        &merged_access,
+                    );
+
                     if let Some(parent_rc) = self.parent.borrow().upgrade() {
                         parent_rc.consume(codegen, self as &dyn Operator, merged)?;
                     }
@@ -274,69 +286,78 @@ impl Operator for Join {
 
             JoinType::Inner => {
                 if self.in_build_phase.get() {
-                    // insert key, payload into the builder
+                    // Build: store only row ids as payload
                     let key_exprs = self.key_exprs_from_ctx(&tuple_ctx, true);
-                    let payload_exprs = self.payload_exprs_from_ctx(&tuple_ctx);
 
-                    let builder_name = self
-                        .builder_var
-                        .borrow()
-                        .as_ref()
-                        .expect("builder_var must be set in the produce phase")
-                        .clone();
+                    if self.left_access_template.borrow().is_none() {
+                        *self.left_access_template.borrow_mut() = Some(tuple_ctx.access.clone());
+                    }
+                    if self.left_row_id_tables_template.borrow().is_none() {
+                        *self.left_row_id_tables_template.borrow_mut() =
+                            Some(tuple_ctx.row_id_tables.clone());
+                    }
 
-                    let key_vec = format!("vec![{}]", key_exprs.join(", "));
-                    let payload_vec = format!("vec![{}]", payload_exprs.join(", "));
+                    let builder_name = self.builder_var.borrow().as_ref().unwrap().clone();
+                    let key = format!("vec![{}]", key_exprs.join(", "));
+                    let payload = tuple_ctx.row_ids_expr.clone(); // variable name (typed)
 
                     codegen.line(&format!(
-                        "{}.insert({}, {});",
-                        builder_name, key_vec, payload_vec
+                        "{b}.insert({k}, {p});",
+                        b = builder_name,
+                        k = key,
+                        p = payload
                     ));
-
                     Ok(())
                 } else {
-                    // probe phase
+                    // Probe: for each match, concatenate row ids and rebuild expressions
                     let key_exprs = self.key_exprs_from_ctx(&tuple_ctx, false);
-                    let map_name = self
-                        .map_var
-                        .borrow()
-                        .as_ref()
-                        .expect("map_var must be set in produce phase")
-                        .clone();
+                    let map_name = self.map_var.borrow().as_ref().unwrap().clone();
 
-                    let key_vec = format!("vec![{}]", key_exprs.join(", "));
+                    let key = format!("vec![{}]", key_exprs.join(", "));
                     let match_var = codegen.new_var("build_row_");
 
-                    // for build_row_ in map.get(vec![key_components]) {
                     codegen.open(format!(
-                        "for {} in {}.get({})",
-                        match_var, map_name, key_vec
+                        "for {br} in {m}.get({k})",
+                        br = match_var,
+                        m = map_name,
+                        k = key
                     ));
 
-                    // Build merged TupleCtx: left side from `match_var`, right side from tuple_ctx
-                    use std::collections::HashMap;
-                    let mut merged = TupleCtx {
-                        exprs: HashMap::new(),
-                    };
+                    let joined_ids_var = codegen.new_var("row_ids_");
+                    self.emit_row_ids_concat(
+                        codegen,
+                        &joined_ids_var,
+                        &match_var,
+                        &tuple_ctx.row_ids_expr,
+                    );
 
-                    // Left side: payload stored as Vec<Value> in build_row_
-                    for (idx, iu) in self.left_payload_ius.borrow().iter().enumerate() {
-                        let expr = format!("{}[{}].clone()", match_var, idx);
-                        merged.exprs.insert(iu.clone(), expr);
+                    let mut merged_tables = self
+                        .left_row_id_tables_template
+                        .borrow()
+                        .clone()
+                        .expect("left_row_id_tables_template should be set during build phase");
+                    merged_tables.extend(tuple_ctx.row_id_tables.iter().cloned());
+
+                    let mut merged_access = self
+                        .left_access_template
+                        .borrow()
+                        .clone()
+                        .expect("left_access_template should be set during build phase");
+                    for (iu, acc) in tuple_ctx.access.iter() {
+                        merged_access.insert(iu.clone(), acc.clone());
                     }
 
-                    // Right side: original expressions
-                    for (iu, expr) in tuple_ctx.exprs.into_iter() {
-                        merged.exprs.insert(iu, expr);
-                    }
+                    let merged = self.rebuild_ctx_from_row_ids(
+                        &joined_ids_var,
+                        &merged_tables,
+                        &merged_access,
+                    );
 
-                    // Forward to parent inside the loop
                     if let Some(parent_rc) = self.parent.borrow().upgrade() {
                         parent_rc.consume(codegen, self as &dyn Operator, merged)?;
                     }
 
-                    codegen.close(); // end for
-
+                    codegen.close(); // end for build_row in map.get(...)
                     Ok(())
                 }
             }

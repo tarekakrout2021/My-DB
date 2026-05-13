@@ -4,9 +4,10 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::{fmt, ptr};
-
+use std::time::Instant;
 use rayon::prelude::*;
 use thread_local::ThreadLocal;
+use colored::Colorize;
 
 /// Lazy-evaluated hashtable that supports multiple values per key.
 pub struct LazyMultiMap<K, V> {
@@ -171,11 +172,18 @@ impl<K: Hash + Send, V: Send> LazyMultiMapParBuilder<K, V> {
         K: Sync,
         V: Sync,
     {
+        //let start = Instant::now();
         let mut entries = Vec::new();
         for cell in self.locals.into_iter() {
             entries.extend(cell.into_inner());
         }
-        build_table_from_entries_parallel(&mut entries)
+        let ret = build_table_from_entries_parallel(&mut entries);
+        // let total_time = start.elapsed();
+        // println!(
+        //     "{}",
+        //     format!("Total Building time : {:?}", total_time).green()
+        // );
+        ret
     }
 }
 

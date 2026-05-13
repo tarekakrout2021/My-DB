@@ -18,10 +18,10 @@ use std::rc::{Rc, Weak};
 pub mod prelude {
     pub use crate::algebra::iu::IURef;
     pub use crate::algebra::join::Join;
+    pub use crate::algebra::print::ParOutput;
     pub use crate::algebra::print::Print;
     pub use crate::algebra::scan::TableScan;
     pub use crate::algebra::select::Select;
-    pub use crate::algebra::print::ParOutput;
 }
 
 use crate::codegen::Codegen;
@@ -29,9 +29,19 @@ use prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct TupleCtx {
-    // For every IURef we know how to refer to it in code
-    //  IURef -> row_1.get(table_0.get_col_index(String::from("col2")).unwrap() as usize).unwrap().clone()
+    /// IURef -> generated Rust expression to fetch that value for the current tuple.
     pub exprs: HashMap<IURef, String>,
+
+    /// IURef -> (table_var, col_idx_var) so we can re-create expressions from row ids.
+    pub access: HashMap<IURef, (String, String)>,
+
+    /// Generated Rust expression that evaluates to the current tuple's row-id list.
+    ///
+    /// This is used as the payload of hash tables to avoid materializing full tuples.
+    pub row_ids_expr: String,
+
+    /// Table vars corresponding to each entry in `row_ids_expr`, in order.
+    pub row_id_tables: Vec<String>,
 }
 
 /// Enumeration of all relational algebra operators.
@@ -141,7 +151,6 @@ pub enum OptimizerPass {
 }
 
 /// Core trait for all relational algebra operators.
-// #[enum_dispatch(Op)]
 pub trait Operator: std::fmt::Debug {
     /// Prepares the operator for execution. `op` is the operator itself.
     fn prepare(&self, op: &Rc<Op>, required_ius: HashSet<IURef>) -> Result<(), Box<dyn Error>>;

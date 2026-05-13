@@ -24,15 +24,35 @@ impl<'a> RowView<'a> {
         let off = self.table.col_offsets[col_idx];
         Some(decode_value_ref(row, off, col.r#type))
     }
+
+    pub fn get_bytes(&self, col_idx: usize) -> Option<&'a [u8]> {
+        let row = self.table.row_ptr(self.row_id)?;
+        let col = self.table.columns.get(col_idx)?;
+        let off = self.table.col_offsets[col_idx];
+        let sz = col.size();
+        row.get(off..off + sz)
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq)]
 pub enum ValueRef {
     Bool(bool),
     Integer(i32),
     Numeric(u64),
     Timestamp(i64),
     Text(crate::types::text::TextView),
+}
+
+impl ValueRef {
+    pub fn value_ref_to_bytes(v: ValueRef) -> Vec<u8> {
+        match v {
+            ValueRef::Bool(b) => vec![b as u8],
+            ValueRef::Integer(i) => i.to_le_bytes().to_vec(),
+            ValueRef::Numeric(n) => n.to_le_bytes().to_vec(),
+            ValueRef::Timestamp(t) => t.to_le_bytes().to_vec(),
+            ValueRef::Text(tv) => tv.as_str().as_bytes().to_vec(),
+        }
+    }
 }
 
 impl PartialEq for ValueRef {
