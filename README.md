@@ -159,6 +159,10 @@ Generated Rust source
 
 **6. Execution** — The native function is called with a pointer to the database. Metrics (compilation time, execution time, row count) are printed on completion.
 
+### Example Generated Code
+
+[example.rs](data/example.rs)
+shows the generated Rust code for a simple SELECT query with a join and filter.
 ---
 
 ## Core Components
