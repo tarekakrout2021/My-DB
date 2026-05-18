@@ -152,9 +152,7 @@ A SELECT query goes through six stages:
 Generated Rust source
     → write to temp .rs file
     → spawn rustc (release mode)
-    → compile to .so / .dylib
-    → dlopen() into process memory
-    → dlsym() to extract function pointer
+    → compile to .so / .dylib and link
 ```
 
 **6. Execution** — The native function is called with a pointer to the database. Metrics (compilation time, execution time, row count) are printed on completion.
