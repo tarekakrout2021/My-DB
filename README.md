@@ -192,15 +192,6 @@ Operators follow the Volcano model — each implements `produce()` and `consume(
 
 ### Type System (`src/types/`)
 
-All type metadata fits in a single 64-bit word:
-
-```
-Bits 63–56:  Type tag (INTEGER, VARCHAR, NUMERIC, etc.)
-Bits 55–24:  Precision / length
-Bits 23–8:   Scale (for NUMERIC)
-Bits 7–0:    Flags (nullable, etc.)
-```
-
 Supported types: `INTEGER`, `BOOLEAN`, `NUMERIC(p,s)`, `TEXT`, `VARCHAR(n)`, `CHAR(n)`, `TIMESTAMP`.
 
 ### Storage Engine (`src/db/`)
