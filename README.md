@@ -8,7 +8,7 @@ Tested on Linux and macOS.
 
 ## Overview
 
-IMLAB executes SQL queries with zero interpretation overhead by JIT-compiling SELECT statements to native machine code at runtime. Each query is transformed into a Rust source file, compiled to a shared library via `rustc`, dynamically loaded with `dlopen`, and executed as a native function — delivering full CPU optimization for every query.
+My_DB executes SQL queries with zero interpretation overhead by JIT-compiling SELECT statements to native machine code at runtime. Each query is transformed into a Rust source file, compiled to a shared library via `rustc`, dynamically loaded with `dlopen`, and executed as a native function — delivering full CPU optimization for every query.
 
 **Key characteristics:**
 - In-memory row-based storage
@@ -32,7 +32,7 @@ RUSTFLAGS=-Awarnings cargo run --bin sql --release
 To print generated JIT code:
 
 ```bash
-RUSTFLAGS=-Awarnings IMLAB_PRINT_CODE=true cargo run --bin sql --release
+RUSTFLAGS=-Awarnings My_DB_PRINT_CODE=true cargo run --bin sql --release
 ```
 
 Example session in the REPL:
@@ -55,7 +55,7 @@ exit
 
 ### TPCC Dataset
 
-Download the dataset from [here](https://db.in.tum.de/teaching/ws2122/imlab/tpcc_5w.tar.gz) and place files under `data/tpcc/`, then:
+Download the dataset from [here](https://db.in.tum.de/teaching/ws2122/My_DB/tpcc_5w.tar.gz) and place files under `data/tpcc/`, then:
 
 ```sql
 startup_tpcc
