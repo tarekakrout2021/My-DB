@@ -161,6 +161,7 @@ Generated Rust source
 
 [example.rs](data/example.rs)
 shows the generated Rust code for a simple SELECT query with a join and filter.
+
 ---
 
 ## Core Components
