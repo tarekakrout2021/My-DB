@@ -8,7 +8,7 @@ Tested on Linux and macOS.
 
 ## Overview
 
-My_DB executes SQL queries with zero interpretation overhead by JIT-compiling SELECT statements to native machine code at runtime. Each query is transformed into a Rust source file, compiled to a shared library via `rustc`, dynamically loaded with `dlopen`, and executed as a native function — delivering full CPU optimization for every query.
+My_DB executes SQL queries by JIT-compiling SELECT statements to native machine code at runtime. Each query is transformed into a Rust source file, compiled to a shared library via `rustc`, dynamically loaded with `dlopen`, and executed as a native function — delivering full CPU optimization for every query.
 
 **Key characteristics:**
 - In-memory row-based storage
